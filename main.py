@@ -2,7 +2,7 @@ import sqlite3
 import uuid
 import random
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 
 app = Flask(__name__)
 DATABASE_NAME = 'global_metrics_reports.db'
@@ -52,17 +52,22 @@ def get_report(report_name):
     date_from = request.args.get('from')
     date_to = request.args.get('to')
 
-    # Connect to the database
+    if not date_from or not date_to:
+        abort(400, description="Missing 'from' or 'to' date parameters.")
+
+    try:
+        date_from_obj = datetime.fromisoformat(date_from)
+        date_to_obj = datetime.fromisoformat(date_to)
+    except ValueError:
+        abort(400, description="Invalid date format. Use 'YYYY-MM-DD'.")
+
+    total_days = (date_to_obj - date_from_obj).days + 1
+
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # Calculate the total number of days in the date range
-    total_days = (datetime.fromisoformat(date_to) - datetime.fromisoformat(date_from)).days + 1
-
-    # Prepare the response dictionary
     response = {"users": [], "dailyAverage": 0}
 
-    # Get the sum of online time for all user activity in the range and count of records
     cursor.execute('''
         SELECT SUM(online_time), COUNT(*)
         FROM UserActivity
@@ -70,11 +75,9 @@ def get_report(report_name):
     ''', (date_from, date_to))
     total_online_time, total_records = cursor.fetchone()
 
-    # Compute global daily average
     if total_records > 0:
         response["dailyAverage"] = calculate_daily_average(total_online_time, total_records)
 
-    # Aggregate data for each user
     cursor.execute('SELECT id FROM Users')
     for user_id, in cursor.fetchall():
         cursor.execute('''
@@ -85,12 +88,11 @@ def get_report(report_name):
         ''', (user_id, date_from, date_to))
         user_activity = cursor.fetchall()
 
-        user_daily_average = 0  # Default to 0 if there's no user activity
-        if user_activity:  # Make sure there is activity data
+        user_daily_average = 0
+        if user_activity:
             user_total_online_time = sum(record[1] for record in user_activity)
             user_daily_average = calculate_daily_average(user_total_online_time, total_days)
 
-        # Add user metrics to the response
         user_metric = {
             "userId": user_id,
             "metrics": [
