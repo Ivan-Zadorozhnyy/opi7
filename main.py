@@ -2,7 +2,7 @@ import sqlite3
 import uuid
 import random
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify, abort, render_template
 
 app = Flask(__name__)
 DATABASE_NAME = 'global_metrics_reports.db'
@@ -46,6 +46,10 @@ def setup_database():
 
     conn.commit()
     conn.close()
+
+@app.route('/')
+def home():
+    return render_template('main.html')
 
 @app.route("/api/report/<report_name>", methods=['GET'])
 def get_report(report_name):
